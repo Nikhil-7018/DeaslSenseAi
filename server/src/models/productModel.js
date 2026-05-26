@@ -1,31 +1,70 @@
-import pool from '../config/db.js';
+// models/productModel.js
 
-export async function searchProducts(query, limit = 50) {
-  const q = (query || '').trim();
-  if (!q) {
-    const [rows] = await pool.query(
-      `SELECT id, name, description, category, url, image_url, created_at
-       FROM products ORDER BY id DESC LIMIT ?`,
-      [limit],
-    );
-    return rows;
+import mongoose from "mongoose";
+
+/**
+ * Price history schema
+ */
+const priceHistorySchema = new mongoose.Schema({
+  amazon: Number,
+  flipkart: Number,
+  croma: Number,
+  date: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+/**
+ * Product schema
+ */
+const productSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true
+  },
+  priceHistory: [priceHistorySchema]
+});
+
+/**
+ * Create model
+ */
+const Product = mongoose.model("Product", productSchema);
+
+/**
+ * 🔍 Search product
+ */
+export async function searchProducts(query) {
+  return await Product.find({
+    name: { $regex: query, $options: "i" }
+  });
+}
+
+/**
+ * ➕ Insert product (used in syncService)
+ */
+export async function insertProduct(data) {
+  let product = await Product.findOne({ name: data.name });
+
+  if (!product) {
+    product = new Product({
+      name: data.name,
+      priceHistory: []
+    });
   }
 
-  const like = `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
-  const [rows] = await pool.query(
-    `SELECT id, name, description, category, url, image_url, created_at
-     FROM products
-     WHERE name LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\'
-     ORDER BY name ASC LIMIT ?`,
-    [like, like, limit],
-  );
-  return rows;
+  product.priceHistory.push({
+    amazon: data.amazon,
+    flipkart: data.flipkart,
+    croma: data.croma
+  });
+
+  await product.save();
+
+  return product;
 }
 
-export async function getProductById(id) {
-  const [rows] = await pool.query(
-    'SELECT id, name, description, category, url, image_url, created_at FROM products WHERE id = ?',
-    [id],
-  );
-  return rows[0] ?? null;
-}
+/**
+ * (Optional) export model if needed
+ */
+export default Product;
